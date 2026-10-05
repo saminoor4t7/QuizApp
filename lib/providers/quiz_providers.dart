@@ -57,6 +57,6 @@ final quizViewModelProvider = ChangeNotifierProvider<QuizViewModel>((ref) {
     repository: ref.watch(questionRepositoryProvider),
     progressStore: ref.watch(quizProgressStoreProvider),
   );
-  unawaited(viewModel.load(resumeSavedProgress: true));
+  unawaited(viewModel.load());
   return viewModel;
 });

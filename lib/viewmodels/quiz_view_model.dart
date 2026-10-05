@@ -147,7 +147,6 @@ class QuizViewModel extends QuizViewModelBase {
     _stopQuestionTimers();
     final generation = ++_loadGeneration;
     _selectedCategory = category;
-    if (category != null) _completedCategories.remove(category);
     _phase = QuizPhase.loading;
     _error = null;
     notifyListeners();
@@ -305,8 +304,6 @@ class QuizViewModel extends QuizViewModelBase {
       _elapsedStopwatch.stop();
       if (submission.percentage >= categoryPassingPercentage) {
         _completedCategories.add(category);
-      } else {
-        _completedCategories.remove(category);
       }
       _phase = QuizPhase.complete;
       _scoreController.add(submission.score);

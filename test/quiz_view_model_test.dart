@@ -226,6 +226,35 @@ void main() {
     },
   );
 
+  test(
+    'opens the category list instead of resuming an active quiz by default',
+    () async {
+      final repository = _FakeQuestionRepository();
+      final progressStore = InMemoryQuizProgressStore();
+      final firstViewModel = QuizViewModel(
+        repository: repository,
+        progressStore: progressStore,
+      );
+      await firstViewModel.load();
+      await firstViewModel.openCategory('Variables and data types');
+      firstViewModel.selectAnswer(0);
+      await firstViewModel.nextQuestion();
+      await Future<void>.delayed(Duration.zero);
+      firstViewModel.dispose();
+
+      final viewModel = QuizViewModel(
+        repository: repository,
+        progressStore: progressStore,
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.load();
+
+      expect(viewModel.phase, QuizPhase.categories);
+      expect(viewModel.selectedCategory, isNull);
+    },
+  );
+
   test('preserves unlocked categories between app sessions', () async {
     final repository = _FakeQuestionRepository();
     repository.firstCategoryCorrectCount = 5;
@@ -250,6 +279,17 @@ void main() {
     await resumedViewModel.load();
 
     expect(resumedViewModel.phase, QuizPhase.categories);
+    expect(
+      resumedViewModel.isCategoryCompleted('Variables and data types'),
+      isTrue,
+    );
+    expect(resumedViewModel.isCategoryUnlocked('Constants'), isTrue);
+
+    repository.firstCategoryCorrectCount = 2;
+    await resumedViewModel.openCategory('Variables and data types');
+    await _answerCategory(resumedViewModel);
+
+    expect(resumedViewModel.passedCurrentCategory, isFalse);
     expect(
       resumedViewModel.isCategoryCompleted('Variables and data types'),
       isTrue,
