@@ -62,6 +62,12 @@ void main() {
   testWidgets('locks later categories until the previous one is completed', (
     tester,
   ) async {
+    tester.view
+      ..physicalSize = const Size(360, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final repository = _FakeQuestionRepository();
     await tester.pumpWidget(
       ProviderScope(
@@ -91,6 +97,7 @@ void main() {
       find.text('Which keyword declares a local variable?'),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
 
     repository.questions.add(
       Question(

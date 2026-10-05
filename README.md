@@ -9,13 +9,14 @@ flutter pub get
 flutter run
 ```
 
-The default API URL is `http://127.0.0.1:8000/api/questions/`. If the backend runs on a different host, set its base URL with a Dart define:
+The API base URL defaults to `http://127.0.0.1:8000` on desktop and `http://192.168.1.15:8000` on Android. The Android default is the development PC's current Wi-Fi address; change it if that address changes. Override the base URL with a Dart define when needed:
 
 ```sh
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+flutter run -d windows --dart-define=API_BASE_URL=http://127.0.0.1:8000
+flutter run -d <android-device-id> --dart-define=API_BASE_URL=http://<pc-wifi-ip>:8000
 ```
 
-Use `10.0.2.2` to reach the development machine from an Android emulator. On an iOS simulator or desktop, `127.0.0.1` refers to the development machine. A physical device needs the development machine's LAN address, and the backend must allow requests from the app's origin when running on web.
+For an Android emulator, use `http://10.0.2.2:8000`; a physical Android device needs the development PC's Wi-Fi/LAN address, and both devices must be on the same network. The backend must listen on `0.0.0.0:8000`, allow the PC's LAN address in its host configuration (for example Django `ALLOWED_HOSTS`), and be allowed through the PC firewall. Android permits local HTTP traffic in the app manifest. On Windows, `127.0.0.1` refers to the development PC. For web, the backend must also allow requests from the app's origin.
 
 ## API response
 

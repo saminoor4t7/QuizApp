@@ -24,19 +24,27 @@ class QuizQuestionView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 CategoryPill(category: question.category),
-                const Spacer(),
-                const Icon(
-                  Icons.schedule_rounded,
-                  size: 15,
-                  color: Color(0xFF8A9088),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  '30 sec per question',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.schedule_rounded,
+                      size: 15,
+                      color: Color(0xFF8A9088),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '30 sec per question',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -101,47 +109,59 @@ class QuizQuestionView extends StatelessWidget {
               const SizedBox(height: 20),
             ],
             const SizedBox(height: 9),
-            Row(
-              children: [
-                if (viewModel.isAnswered) ...[
-                  Icon(
-                    viewModel.timedOut
-                        ? Icons.highlight_off_rounded
-                        : viewModel.isCorrect == true
-                        ? Icons.check_circle_outline
-                        : viewModel.isCorrect == false
-                        ? Icons.highlight_off_rounded
-                        : Icons.bookmark_added_outlined,
-                    color: viewModel.timedOut || viewModel.isCorrect == false
-                        ? const Color(0xFFB66A58)
-                        : const Color(0xFF538066),
-                    size: 19,
+            if (viewModel.isAnswered)
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        viewModel.timedOut
+                            ? Icons.highlight_off_rounded
+                            : viewModel.isCorrect == true
+                            ? Icons.check_circle_outline
+                            : viewModel.isCorrect == false
+                            ? Icons.highlight_off_rounded
+                            : Icons.bookmark_added_outlined,
+                        color:
+                            viewModel.timedOut ||
+                                viewModel.isCorrect == false
+                            ? const Color(0xFFB66A58)
+                            : const Color(0xFF538066),
+                        size: 19,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        viewModel.timedOut
+                            ? "Time's up — incorrect"
+                            : viewModel.isCorrect == null
+                            ? 'Answer recorded'
+                            : viewModel.isCorrect!
+                            ? 'Nicely done'
+                            : 'Keep learning',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color:
+                              viewModel.timedOut ||
+                                  viewModel.isCorrect == false
+                              ? const Color(0xFFB66A58)
+                              : const Color(0xFF538066),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    viewModel.timedOut
-                        ? "Time's up — incorrect"
-                        : viewModel.isCorrect == null
-                        ? 'Answer recorded'
-                        : viewModel.isCorrect!
-                        ? 'Nicely done'
-                        : 'Keep learning',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: viewModel.timedOut || viewModel.isCorrect == false
-                          ? const Color(0xFFB66A58)
-                          : const Color(0xFF538066),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
                   NextButton(
                     isLast: viewModel.isLastQuestion,
                     onPressed: viewModel.nextQuestion,
                   ),
-                ] else
-                  Text('Select one option', style: theme.textTheme.bodyMedium),
-              ],
-            ),
+                ],
+              )
+            else
+              Text('Select one option', style: theme.textTheme.bodyMedium),
           ],
         ),
       ),

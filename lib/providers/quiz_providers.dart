@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -19,12 +20,12 @@ final apiClientProvider = Provider<http.Client>((ref) {
 });
 
 final apiBaseUriProvider = Provider<Uri>((ref) {
-  return Uri.parse(
-    const String.fromEnvironment(
-      'API_BASE_URL',
-      defaultValue: 'http://127.0.0.1:8000',
-    ),
-  );
+  const configuredUrl = String.fromEnvironment('API_BASE_URL');
+  final defaultUrl = switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'http://192.168.1.15:8000',
+    _ => 'http://127.0.0.1:8000',
+  };
+  return Uri.parse(configuredUrl.isEmpty ? defaultUrl : configuredUrl);
 });
 
 final quizProgressStoreProvider = Provider<QuizProgressStore>((ref) {
