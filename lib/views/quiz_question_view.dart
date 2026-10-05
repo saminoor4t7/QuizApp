@@ -112,8 +112,7 @@ class QuizQuestionView extends StatelessWidget {
                         : viewModel.isCorrect == false
                         ? Icons.highlight_off_rounded
                         : Icons.bookmark_added_outlined,
-                    color: viewModel.timedOut ||
-                            viewModel.isCorrect == false
+                    color: viewModel.timedOut || viewModel.isCorrect == false
                         ? const Color(0xFFB66A58)
                         : const Color(0xFF538066),
                     size: 19,
@@ -128,8 +127,7 @@ class QuizQuestionView extends StatelessWidget {
                         ? 'Nicely done'
                         : 'Keep learning',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: viewModel.timedOut ||
-                              viewModel.isCorrect == false
+                      color: viewModel.timedOut || viewModel.isCorrect == false
                           ? const Color(0xFFB66A58)
                           : const Color(0xFF538066),
                       fontWeight: FontWeight.w600,
@@ -152,10 +150,7 @@ class QuizQuestionView extends StatelessWidget {
     final sidePanel = Column(
       children: [
         QuizCard(
-          child: Padding(
-            padding: const EdgeInsets.all(23),
-            child: TodayNote(),
-          ),
+          child: Padding(padding: const EdgeInsets.all(23), child: TodayNote()),
         ),
         const SizedBox(height: 15),
         QuizCard(
@@ -170,6 +165,15 @@ class QuizQuestionView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (viewModel.progressError != null) ...[
+          Text(
+            'Quiz progress could not be saved: ${viewModel.progressError}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFFB66A58),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         QuizIntro(isWide: isWide, viewModel: viewModel),
         const SizedBox(height: 28),
         ProgressStrip(viewModel: viewModel),

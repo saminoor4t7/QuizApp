@@ -37,6 +37,8 @@ dependencies:
   flutter_riverpod: ^3.3.2
   http: ^1.6.0
   flutter_launcher_icons: ^0.14.4
+  shared_preferences: ^2.5.5
+  shared_preferences_windows: ^2.4.1
 
 
 dev_dependencies:

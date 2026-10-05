@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'platform/register_preferences.dart';
 import 'views/quiz_page.dart';
 
-void main() => runApp(const ProviderScope(child: QuizApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await registerPreferencesPlatform();
+  runApp(const ProviderScope(child: QuizApp()));
+}
 
 class QuizApp extends StatelessWidget {
   const QuizApp({super.key});

@@ -6,6 +6,8 @@ import 'package:quiz_app/repositories/quiz_repository.dart';
 import 'package:quiz_app/viewmodels/quiz_view_model.dart';
 import 'package:quiz_app/views/quiz_results_view.dart';
 
+import 'fakes/in_memory_quiz_progress_store.dart';
+
 class _FakeQuestionRepository implements QuizRepository {
   final List<String?> requestedCategories = [];
   List<SubmittedAnswer> lastSubmittedAnswers = [];
@@ -81,7 +83,10 @@ void main() {
     'requires 60 percent and allows a failed category to be retried',
     () async {
       final repository = _FakeQuestionRepository();
-      final viewModel = QuizViewModel(repository: repository);
+      final viewModel = QuizViewModel(
+        repository: repository,
+        progressStore: InMemoryQuizProgressStore(),
+      );
       addTearDown(viewModel.dispose);
 
       await viewModel.load();
@@ -118,7 +123,10 @@ void main() {
   testWidgets('shows the server percentage and retry action after a fail', (
     tester,
   ) async {
-    final viewModel = QuizViewModel(repository: _FakeQuestionRepository());
+    final viewModel = QuizViewModel(
+      repository: _FakeQuestionRepository(),
+      progressStore: InMemoryQuizProgressStore(),
+    );
     addTearDown(viewModel.dispose);
     await viewModel.load();
     await viewModel.openCategory('Variables and data types');
@@ -154,6 +162,7 @@ void main() {
     final repository = _FakeQuestionRepository();
     final viewModel = QuizViewModel(
       repository: repository,
+      progressStore: InMemoryQuizProgressStore(),
       questionTimeLimit: const Duration(seconds: 1),
     );
     addTearDown(viewModel.dispose);
@@ -177,5 +186,74 @@ void main() {
     }
     expect(viewModel.phase, QuizPhase.complete);
     expect(repository.lastSubmittedAnswers.first.answer, isEmpty);
+  });
+
+  test(
+    'restores the current question, answers, timer and elapsed duration',
+    () async {
+      final repository = _FakeQuestionRepository();
+      final progressStore = InMemoryQuizProgressStore();
+      final firstViewModel = QuizViewModel(
+        repository: repository,
+        progressStore: progressStore,
+      );
+      await firstViewModel.load();
+      await firstViewModel.openCategory('Variables and data types');
+      firstViewModel.selectAnswer(0);
+      await firstViewModel.nextQuestion();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      await Future<void>.delayed(Duration.zero);
+      firstViewModel.dispose();
+
+      expect(progressStore.progress?.category, 'Variables and data types');
+      expect(progressStore.progress?.currentQuestionId, '1');
+      expect(progressStore.progress?.answers['0'], 0);
+
+      final resumedViewModel = QuizViewModel(
+        repository: repository,
+        progressStore: progressStore,
+      );
+      addTearDown(resumedViewModel.dispose);
+      await resumedViewModel.load(resumeSavedProgress: true);
+
+      expect(resumedViewModel.phase, QuizPhase.ready);
+      expect(resumedViewModel.selectedCategory, 'Variables and data types');
+      expect(resumedViewModel.currentIndex, 1);
+      expect(resumedViewModel.answerHistory, [0]);
+      expect(resumedViewModel.secondsRemaining, greaterThan(0));
+      expect(resumedViewModel.secondsRemaining, lessThanOrEqualTo(30));
+      expect(resumedViewModel.elapsedTime, isNot('00:00'));
+    },
+  );
+
+  test('preserves unlocked categories between app sessions', () async {
+    final repository = _FakeQuestionRepository();
+    repository.firstCategoryCorrectCount = 5;
+    final progressStore = InMemoryQuizProgressStore();
+    final firstViewModel = QuizViewModel(
+      repository: repository,
+      progressStore: progressStore,
+    );
+    await firstViewModel.load();
+    await firstViewModel.openCategory('Variables and data types');
+    await _answerCategory(firstViewModel);
+    expect(firstViewModel.isCategoryUnlocked('Constants'), isTrue);
+    firstViewModel.returnToCategories();
+    await Future<void>.delayed(Duration.zero);
+    firstViewModel.dispose();
+
+    final resumedViewModel = QuizViewModel(
+      repository: repository,
+      progressStore: progressStore,
+    );
+    addTearDown(resumedViewModel.dispose);
+    await resumedViewModel.load();
+
+    expect(resumedViewModel.phase, QuizPhase.categories);
+    expect(
+      resumedViewModel.isCategoryCompleted('Variables and data types'),
+      isTrue,
+    );
+    expect(resumedViewModel.isCategoryUnlocked('Constants'), isTrue);
   });
 }

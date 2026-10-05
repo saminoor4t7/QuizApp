@@ -28,9 +28,12 @@ After all questions in a category are answered, the app sends them to `POST /api
 - `lib/models/question.dart` and `lib/models/quiz_submission.dart` — separate question and grading-response models.
 - `lib/services/question_service.dart` and `lib/services/quiz_submission_service.dart` — separate question-fetch and answer-submission APIs.
 - `lib/repositories/` — repository contract and API-backed implementation composed from the services.
-- `lib/providers/quiz_providers.dart` — Riverpod API, repository, and view-model providers.
+- `lib/services/quiz_progress_store.dart` — saves and restores the active attempt with `shared_preferences`.
+- `lib/providers/quiz_providers.dart` — Riverpod API, progress-store, repository, and view-model providers.
 - `lib/viewmodels/quiz_view_model.dart` — quiz state, navigation, scoring, and refresh.
 - `lib/views/` — separate category-list, question, results, and page views.
 - `lib/widgets/quiz_surfaces.dart` — reusable cards, answer options, feedback, timer, and progress widgets.
 
 Categories are discovered from the all-questions response. Each category is loaded from `/api/questions/?category=<category>` when selected. Each question has a 30-second timer; unanswered questions are submitted as empty answers, marked incorrect, and automatically advance. To pass a category and unlock the next one, users need at least 60% correct; lower scores show a **Try again** action.
+
+An unfinished attempt is saved locally, including the current category and question, selected answers, remaining question time, elapsed quiz time, and unlocked categories. Reopening the app resumes the attempt from that point.

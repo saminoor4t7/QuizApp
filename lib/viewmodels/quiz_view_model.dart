@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/question.dart';
+import '../models/quiz_progress.dart';
 import '../models/quiz_submission.dart';
 import '../repositories/quiz_repository.dart';
+import '../services/quiz_progress_store.dart';
 
 enum QuizPhase { loading, categories, ready, submitting, complete, error }
 
@@ -13,7 +15,7 @@ const defaultQuestionTimeLimit = Duration(seconds: 30);
 const timeUpFeedbackDuration = Duration(milliseconds: 1200);
 
 abstract class QuizViewModelBase extends ChangeNotifier {
-  Future<void> load({String? category});
+  Future<void> load({String? category, bool resumeSavedProgress = false});
   Future<void> openCategory(String category);
   void selectAnswer(int index);
   Future<void> nextQuestion();
@@ -25,11 +27,14 @@ abstract class QuizViewModelBase extends ChangeNotifier {
 class QuizViewModel extends QuizViewModelBase {
   QuizViewModel({
     required QuizRepository repository,
+    required QuizProgressStore progressStore,
     Duration questionTimeLimit = defaultQuestionTimeLimit,
   }) : _repository = repository,
+       _progressStore = progressStore,
        _questionTimeLimit = questionTimeLimit;
 
   final QuizRepository _repository;
+  final QuizProgressStore _progressStore;
   final Duration _questionTimeLimit;
   final StreamController<int> _scoreController =
       StreamController<int>.broadcast();
@@ -37,7 +42,9 @@ class QuizViewModel extends QuizViewModelBase {
   final Set<int> _correctQuestions = {};
   final Set<String> _completedCategories = {};
   final List<int> _answerHistory = [];
-  late DateTime _startedAt;
+  final Stopwatch _elapsedStopwatch = Stopwatch();
+  Duration _elapsedBeforeSession = Duration.zero;
+  Future<void> _progressWrite = Future<void>.value();
   List<Question> _catalogQuestions = const [];
   List<Question> _questions = const [];
   List<String> _categories = const [];
@@ -52,6 +59,7 @@ class QuizViewModel extends QuizViewModelBase {
   Timer? _timeoutAdvanceTimer;
   QuizPhase _phase = QuizPhase.loading;
   Object? _error;
+  Object? _progressError;
   bool _disposed = false;
   int _loadGeneration = 0;
 
@@ -67,6 +75,7 @@ class QuizViewModel extends QuizViewModelBase {
   int? get selectedIndex => _selectedIndex;
   QuizPhase get phase => _phase;
   Object? get error => _error;
+  Object? get progressError => _progressError;
   int get score => _submission?.score ?? _correctQuestions.length;
   int get percentage =>
       _submission?.percentage.round() ??
@@ -97,7 +106,7 @@ class QuizViewModel extends QuizViewModelBase {
   bool get isLastQuestion =>
       _questions.isNotEmpty && _currentIndex == _questions.length - 1;
   String get elapsedTime {
-    final elapsed = DateTime.now().difference(_startedAt);
+    final elapsed = _elapsedBeforeSession + _elapsedStopwatch.elapsed;
     final minutes = elapsed.inMinutes;
     final seconds = elapsed.inSeconds.remainder(60);
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
@@ -131,7 +140,10 @@ class QuizViewModel extends QuizViewModelBase {
   }
 
   @override
-  Future<void> load({String? category}) async {
+  Future<void> load({
+    String? category,
+    bool resumeSavedProgress = false,
+  }) async {
     _stopQuestionTimers();
     final generation = ++_loadGeneration;
     _selectedCategory = category;
@@ -159,13 +171,32 @@ class QuizViewModel extends QuizViewModelBase {
         _completedCategories.removeWhere(
           (completed) => !_categories.contains(completed),
         );
-        _phase = QuizPhase.categories;
+        final savedProgress = await _progressStore.load();
+        if (_disposed || generation != _loadGeneration) return;
+        if (savedProgress != null) {
+          _completedCategories.addAll(
+            savedProgress.completedCategories.where(_categories.contains),
+          );
+        }
+        final restored =
+            resumeSavedProgress &&
+            savedProgress != null &&
+            await _restoreProgress(savedProgress, generation);
+        if (_disposed || generation != _loadGeneration) return;
+        if (!restored) {
+          _phase = QuizPhase.categories;
+          await _saveInactiveProgress();
+        }
       } else {
         _questions = questions;
         _phase = QuizPhase.ready;
+        _elapsedBeforeSession = Duration.zero;
+        _elapsedStopwatch
+          ..reset()
+          ..start();
         _startQuestionTimer();
+        await _saveProgress();
       }
-      _startedAt = DateTime.now();
     } catch (error) {
       if (_disposed || generation != _loadGeneration) return;
       _error = error;
@@ -195,6 +226,7 @@ class QuizViewModel extends QuizViewModelBase {
     }
     _scoreController.add(score);
     notifyListeners();
+    unawaited(_saveProgress());
   }
 
   @override
@@ -209,6 +241,7 @@ class QuizViewModel extends QuizViewModelBase {
       _timedOut = false;
       _startQuestionTimer();
       notifyListeners();
+      unawaited(_saveProgress());
     }
   }
 
@@ -232,6 +265,7 @@ class QuizViewModel extends QuizViewModelBase {
     _selectedCategory = null;
     _phase = QuizPhase.categories;
     notifyListeners();
+    unawaited(_saveInactiveProgress());
   }
 
   Future<void> _submitCurrentAnswers() async {
@@ -268,6 +302,7 @@ class QuizViewModel extends QuizViewModelBase {
       final submission = await _repository.submitAnswers(answers);
       if (_disposed || generation != _loadGeneration) return;
       _submission = submission;
+      _elapsedStopwatch.stop();
       if (submission.percentage >= categoryPassingPercentage) {
         _completedCategories.add(category);
       } else {
@@ -275,6 +310,7 @@ class QuizViewModel extends QuizViewModelBase {
       }
       _phase = QuizPhase.complete;
       _scoreController.add(submission.score);
+      await _saveInactiveProgress();
     } catch (error) {
       if (_disposed || generation != _loadGeneration) return;
       _error = error;
@@ -286,6 +322,10 @@ class QuizViewModel extends QuizViewModelBase {
 
   void _resetCurrentQuiz() {
     _stopQuestionTimers();
+    _elapsedStopwatch
+      ..stop()
+      ..reset();
+    _elapsedBeforeSession = Duration.zero;
     _answers.clear();
     _correctQuestions.clear();
     _answerHistory.clear();
@@ -299,10 +339,10 @@ class QuizViewModel extends QuizViewModelBase {
     _scoreController.add(0);
   }
 
-  void _startQuestionTimer() {
+  void _startQuestionTimer({bool resetTime = true}) {
     _questionTimer?.cancel();
     _timeoutAdvanceTimer?.cancel();
-    _secondsRemaining = _questionTimeLimit.inSeconds;
+    if (resetTime) _secondsRemaining = _questionTimeLimit.inSeconds;
     _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_disposed || _phase != QuizPhase.ready || isAnswered) {
         timer.cancel();
@@ -315,6 +355,7 @@ class QuizViewModel extends QuizViewModelBase {
         return;
       }
       notifyListeners();
+      unawaited(_saveProgress());
     });
     notifyListeners();
   }
@@ -327,6 +368,7 @@ class QuizViewModel extends QuizViewModelBase {
     _answerHistory.add(-1);
     _scoreController.add(score);
     notifyListeners();
+    unawaited(_saveProgress());
     _timeoutAdvanceTimer = Timer(timeUpFeedbackDuration, () {
       if (!_disposed && _phase == QuizPhase.ready && isAnswered) {
         unawaited(nextQuestion());
@@ -339,6 +381,134 @@ class QuizViewModel extends QuizViewModelBase {
     _questionTimer = null;
     _timeoutAdvanceTimer?.cancel();
     _timeoutAdvanceTimer = null;
+  }
+
+  Future<bool> _restoreProgress(QuizProgress progress, int generation) async {
+    final category = progress.category;
+    if (category == null ||
+        !_categories.contains(category) ||
+        !isCategoryUnlocked(category)) {
+      return false;
+    }
+
+    final questions = await _repository.loadQuestions(category: category);
+    if (_disposed || generation != _loadGeneration || questions.isEmpty) {
+      return false;
+    }
+    final currentIndex = questions.indexWhere(
+      (question) => question.id == progress.currentQuestionId,
+    );
+    if (currentIndex < 0) return false;
+
+    final restoredAnswers = <int, int>{};
+    for (final entry in progress.answers.entries) {
+      final questionIndex = questions.indexWhere(
+        (question) => question.id == entry.key,
+      );
+      if (questionIndex < 0 ||
+          entry.value < -1 ||
+          entry.value >= questions[questionIndex].options.length) {
+        return false;
+      }
+      restoredAnswers[questionIndex] = entry.value;
+    }
+    if (List.generate(
+      currentIndex,
+      (index) => index,
+    ).any((index) => !restoredAnswers.containsKey(index))) {
+      return false;
+    }
+
+    _selectedCategory = category;
+    _questions = questions;
+    _answers.addAll(restoredAnswers);
+    _currentIndex = currentIndex;
+    _selectedIndex = restoredAnswers[currentIndex];
+    _timedOut = _selectedIndex == -1;
+    for (var index = 0; index <= currentIndex; index++) {
+      final answer = restoredAnswers[index];
+      if (answer == null) continue;
+      _answerHistory.add(answer);
+      if (answer >= 0 && questions[index].isCorrect(answer) == true) {
+        _correctQuestions.add(index);
+      }
+    }
+
+    final savedAt = DateTime.fromMillisecondsSinceEpoch(
+      progress.savedAtMilliseconds,
+    );
+    final timeAway = DateTime.now().difference(savedAt);
+    _elapsedBeforeSession = Duration(
+      milliseconds:
+          progress.elapsedMilliseconds +
+          (timeAway.isNegative ? 0 : timeAway.inMilliseconds),
+    );
+    _elapsedStopwatch.start();
+    _secondsRemaining = progress.secondsRemaining.clamp(
+      1,
+      _questionTimeLimit.inSeconds,
+    );
+    _phase = QuizPhase.ready;
+    _scoreController.add(score);
+    if (!isAnswered) {
+      _startQuestionTimer(resetTime: false);
+    } else if (_timedOut) {
+      _timeoutAdvanceTimer = Timer(timeUpFeedbackDuration, () {
+        if (!_disposed && _phase == QuizPhase.ready && isAnswered) {
+          unawaited(nextQuestion());
+        }
+      });
+    }
+    return true;
+  }
+
+  Future<void> _saveProgress() async {
+    final category = _selectedCategory;
+    if (_phase != QuizPhase.ready ||
+        category == null ||
+        currentQuestion == null) {
+      return;
+    }
+    final progress = QuizProgress(
+      category: category,
+      currentQuestionId: currentQuestion!.id,
+      answers: {
+        for (final entry in _answers.entries)
+          _questions[entry.key].id: entry.value,
+      },
+      secondsRemaining: _secondsRemaining,
+      elapsedMilliseconds:
+          (_elapsedBeforeSession + _elapsedStopwatch.elapsed).inMilliseconds,
+      savedAtMilliseconds: DateTime.now().millisecondsSinceEpoch,
+      completedCategories: List.unmodifiable(_completedCategories),
+    );
+    await _queueProgressWrite(() => _progressStore.save(progress));
+  }
+
+  Future<void> _saveInactiveProgress() async {
+    _elapsedStopwatch.stop();
+    final progress = QuizProgress(
+      category: null,
+      currentQuestionId: null,
+      answers: const {},
+      secondsRemaining: _questionTimeLimit.inSeconds,
+      elapsedMilliseconds: 0,
+      savedAtMilliseconds: DateTime.now().millisecondsSinceEpoch,
+      completedCategories: List.unmodifiable(_completedCategories),
+    );
+    await _queueProgressWrite(() => _progressStore.save(progress));
+  }
+
+  Future<void> _queueProgressWrite(Future<void> Function() write) {
+    final queuedWrite = _progressWrite.then((_) async {
+      await write();
+      _progressError = null;
+    });
+    _progressWrite = queuedWrite.catchError((Object error) {
+      _progressError = error;
+      if (!_disposed) notifyListeners();
+    });
+    return _progressWrite;
   }
 
   @override

@@ -6,6 +6,8 @@ import 'package:quiz_app/models/quiz_submission.dart';
 import 'package:quiz_app/providers/quiz_providers.dart';
 import 'package:quiz_app/repositories/quiz_repository.dart';
 
+import 'fakes/in_memory_quiz_progress_store.dart';
+
 class _FakeQuestionRepository implements QuizRepository {
   List<Question> questions = [
     Question(
@@ -63,7 +65,12 @@ void main() {
     final repository = _FakeQuestionRepository();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [questionRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          questionRepositoryProvider.overrideWithValue(repository),
+          quizProgressStoreProvider.overrideWithValue(
+            InMemoryQuizProgressStore(),
+          ),
+        ],
         child: const QuizApp(),
       ),
     );
